@@ -1,0 +1,63 @@
+---
+title: "Gráfico Gapminder"
+output:
+  html_document:
+    df_print: paged
+---
+Gráfico de inflación vs expectativa de vida.
+
+Siendo Argentinos, conocemos muy bien los efectos que tiene la inflación en la vida cotidiana. Pero, qué pasa en el resto del mundo?
+
+Una forma, creo yo, de aproximar la "calidad de vida" es en función de la expectativa de vida.
+
+En base a eso, decidí armar este gráfico para ver qué pasa en el resto del mundo.
+
+NOTAS:
+- Los datos fueron procesados en python, haganme acordar de mostrar el codigo.
+- Basicamente me quedé con los años que coincidían entre los datasets (lifeExp hay a partir del 61).
+
+```{r}
+# Load libraries
+library(ggplot2)
+library(gganimate)
+library(readr)
+library(dplyr)
+
+# Load the dataset created in Python
+df <- read_csv("data/final_dataset.csv")
+
+df <- df %>%
+  mutate(
+    inflation = as.numeric(gsub(",", ".", gsub("[^0-9,.-]", "", inflation))),
+    lifeExp   = as.numeric(gsub(",", ".", gsub("[^0-9,.-]", "", lifeExp))),
+    year      = as.integer(year)
+  )
+
+
+# Remove rows with NA values so countries disappear when data is missing
+df_clean <- df %>%
+  filter(!is.na(lifeExp), !is.na(inflation))
+
+# Create scatter plot with animation
+p <- ggplot(df_clean, aes(x = inflation, y = lifeExp,
+                          color = continent, label = country)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_text(aes(label = country), hjust = 1.2, vjust = 0.5, size = 3, show.legend = FALSE) +
+  scale_x_continuous("Tasa de inflación (%)") +
+  scale_y_continuous("Expectativa de Vida") +
+  theme_minimal(base_size = 14) +
+  labs(title = "Año: {frame_time}",
+       color = "continente") +
+  transition_time(year) +
+  ease_aes('linear')
+
+# Render the animation (default: gif)
+animate(p, nframes = 200, fps = 10, width = 800, height = 600)
+
+# Save animation
+anim_save("scatter_animation.gif", p)
+
+```
+
+
+
