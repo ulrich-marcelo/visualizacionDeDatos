@@ -16,7 +16,12 @@ NOTAS:
 - Los datos fueron procesados en python, haganme acordar de mostrar el codigo.
 - Basicamente me quedé con los años que coincidían entre los datasets (lifeExp hay a partir del 61).
 
+
+Primero cargo los datos y los exploro...
+
+
 ```{r}
+
 # Load libraries
 library(ggplot2)
 library(gganimate)
@@ -24,7 +29,7 @@ library(readr)
 library(dplyr)
 
 # Load the dataset created in Python
-df <- read_csv("data/final_dataset.csv")
+df <- read_csv("data/inflationVsLifeExp.csv")
 
 df <- df %>%
   mutate(
@@ -33,30 +38,203 @@ df <- df %>%
     year      = as.integer(year)
   )
 
-
 # Remove rows with NA values so countries disappear when data is missing
 df_clean <- df %>%
   filter(!is.na(lifeExp), !is.na(inflation))
 
-# Create scatter plot with animation
-p <- ggplot(df_clean, aes(x = inflation, y = lifeExp,
-                          color = continent, label = country)) +
-  geom_point(size = 3, alpha = 0.8) +
-  geom_text(aes(label = country), hjust = 1.2, vjust = 0.5, size = 3, show.legend = FALSE) +
-  scale_x_continuous("Tasa de inflación (%)") +
-  scale_y_continuous("Expectativa de Vida") +
-  theme_minimal(base_size = 14) +
-  labs(title = "Año: {frame_time}",
-       color = "continente") +
-  transition_time(year) +
-  ease_aes('linear')
+```
 
-# Render the animation (default: gif)
-animate(p, nframes = 200, fps = 10, width = 800, height = 600)
+```{r}
+ggplot(df_clean,
+       aes(x = year,
+           y = lifeExp,
+           colour = country))+
+  geom_line()+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Expectativa de vida a través del tiempo",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Expectativa de vida (años)",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+```
 
-# Save animation
-anim_save("scatter_animation.gif", p)
+Podemos ver una tendencia general positiva de la expectativa de vida en relación al tiempo.
 
+
+```{r}
+ggplot(df_clean,
+       aes(x = year,
+           y = inflation,
+           colour = country))+
+  geom_line()+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Inflación a traves del tiempo",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Inflación Interanual (%)",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+```
+
+En cuanto a la inflación, es dificil ver la tendencia general por culpa de los picos de hiperinflación (parece que no somos los unicos, ni siquiera el record).
+
+Nota: este dato de inflación se mide usando la tasa de cambio del deflactor del PBI (Deflactor=(PIB_Real / PIB_Nominal)×100)
+
+Pero si lo vemos en escala logaritmica...
+
+```{r}
+ggplot(df_clean,
+       aes(x = year,
+           y = inflation,
+           colour = country))+
+  geom_line()+
+  scale_y_log10()+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Inflación a traves del tiempo",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Inflación Interanual [log(%)]",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+```
+
+Marca error porque hay valores menores a 0 de inflación (que lujo), haciendo que el log se vaya a infinito. Para poder verlo mejor, tenemos el caso Argentino...
+
+```{r}
+ggplot(filter(df_clean, country %in% c('Argentina')),
+       aes(x = year,
+           y = inflation,
+           colour = country))+
+  geom_line()+
+  scale_y_log10()+
+  facet_wrap(vars(continent))+
+  theme_minimal()+
+  labs(title = "Inflación a traves del tiempo",
+       y = "Inflación Interanual [log(%)]",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+```
+
+En 1993 tuvimos -3% y el gráfico se rompe.
+
+Para solucionar esto y poder ver tanto hiperinflación como deflación, uso la escala asinh (arcoseno hiperbolico)
+
+Asinh tiene la ventaja de la escala logaritmica para valores grandes, distingue el signo y para valores chicos es casi lineal. Entonces los casos -inf, -1, 0, 1 e inf son distinguibles.
+
+```{r}
+ggplot(df_clean,
+       aes(x = year,
+           y = inflation,
+           colour = country))+
+  geom_line()+
+  scale_y_continuous("Inflación Interanual [asinh(%)]", trans = "asinh")+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Inflación a traves del tiempo",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Inflación Interanual [asinh(%)]",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+
+```
+
+No se distingue bien por la cantidad de lineas, pero al ver Argentina...
+
+
+
+```{r}
+
+ggplot(filter(df_clean, country %in% c('Argentina')),
+       aes(x = year,
+           y = inflation,
+           colour = country))+
+  geom_line()+
+  scale_y_continuous("Inflación Interanual [asinh(%)]", trans = "asinh")+
+  facet_wrap(vars(continent))+
+  theme_minimal()+
+  labs(title = "Inflación a traves del tiempo",
+       y = "Inflación Interanual [asinh(%)]",
+       x = "Año de medición",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+
+```
+
+Con esta escala podemos distinguir y comparar años con inflación y deflación. Ejemplo: en Argentina, el año 1989 tuvo 3000% de inflación (el pico más alto del grafico), mientras que en 1993 tuvo -3% (pico inferior).
+
+
+
+Ahora, que pasa entre la esperanza de vida y la inflación?
+
+
+
+
+```{r}
+
+ggplot(filter(df_clean, year == 2019),
+       aes(x = inflation,
+           y = lifeExp))+
+  geom_point()+
+  scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Correlación inflación interanual y esperanza de vida (año 2019)",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Esperanza de vida (años)",
+       x = "Inflación (asinh(%))",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
+
+```
+
+
+No parece haber una correlación clara, parece más ruido estadistico, no?
+
+A ver que pasa a lo largo del tiempo...
+
+```{r}
+
+anim <- ggplot(df_clean,
+       aes(x = inflation,
+           y = lifeExp))+
+  geom_point()+
+  scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
+  facet_wrap(vars(continent))+
+  theme_minimal()+
+  labs(title = "Correlación inflación interanual y esperanza de vida, año {frame_time}",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Esperanza de vida (años)",
+       x = "Inflación (asinh(%))",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")+
+  transition_time(year)
+anim
+```
+
+
+
+A lo largo del tiempo esto no parece cambiar, será que estoy comparando peras con bananas?
+
+
+
+```{r}
+ggplot(df_clean,
+       aes(y = asinh(inflation),
+           x = year,
+           colours = country))+
+  geom_point()+
+  scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
+  facet_wrap(vars(continent))+
+  guides(colour = "none")+
+  theme_minimal()+
+  labs(title = "Correlación inflación interanual y esperanza de vida, año {frame_time}",
+       subtitle = "Segmentado por continente. Centro America figura como America del Norte*",
+       y = "Esperanza de vida (años)",
+       x = "Inflación (asinh(%))",
+       caption = "Fuente: Gapminder @ https://www.gapminder.org/data/")
 ```
 
 
