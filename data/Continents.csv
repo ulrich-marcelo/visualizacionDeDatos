@@ -91,7 +91,7 @@ Kenya,Africa
 Kiribati,Oceania
 Kuwait,Asia
 Kyrgyz Republic,Asia
-Laos,Asia
+Lao,Asia
 Latvia,Europe
 Lebanon,Asia
 Lesotho,Africa
@@ -110,7 +110,7 @@ Marshall Islands,Oceania
 Mauritania,Africa
 Mauritius,Africa
 Mexico,North America
-"Micronesia, Fed. Sts.",Unknown
+"Micronesia, Fed. Sts.",Oceania
 Moldova,Europe
 Monaco,Europe
 Mongolia,Asia
@@ -163,7 +163,7 @@ Spain,Europe
 Sri Lanka,Asia
 St. Kitts and Nevis,North America
 St. Lucia,North America
-St. Vincent and the Grenadines,Unknown
+St. Vincent and the Grenadines,North America
 Sudan,Africa
 Suriname,South America
 Sweden,Europe
@@ -172,7 +172,7 @@ Syria,Asia
 Tajikistan,Asia
 Tanzania,Africa
 Thailand,Asia
-Timor-Leste,Unknown
+Timor-Leste,Asia
 Togo,Africa
 Tonga,Oceania
 Trinidad and Tobago,North America
@@ -180,8 +180,8 @@ Tunisia,Africa
 Turkey,Asia
 Turkmenistan,Asia
 Tuvalu,Oceania
-UAE,Unknown
-UK,Unknown
+UAE,Asia
+UK,Europe
 USA,North America
 Uganda,Africa
 Ukraine,Europe
