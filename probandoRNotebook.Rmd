@@ -62,7 +62,7 @@ ggplot(df_clean,
            y = lifeExp,
            colour = country))+
   geom_line()+
-  facet_wrap(vars(continent))+
+  facet_wrap(vars(continent), scales = "free_y")+
   scale_color_viridis_d()+
   guides(colour = "none")+
   theme_minimal()+
@@ -85,8 +85,9 @@ ggplot(df_clean,
        aes(x = year,
            y = inflation,
            colour = country))+
-  geom_line()+
-  facet_wrap(vars(continent))+
+  geom_line(alpha = 0.5)+
+  scale_color_viridis_d(option = 'magma')+
+  facet_wrap(vars(continent), scales = "free_y")+
   guides(colour = "none")+
   theme_minimal()+
   labs(title = "Inflación a traves del tiempo",
@@ -107,8 +108,8 @@ ggplot(df_clean,
        aes(x = year,
            y = inflation,
            colour = country))+
-  geom_line()+
-  scale_y_log10()+
+  geom_line(alpha = 0.5)+
+  scale_y_log10(labels=scales::comma)+
   facet_wrap(vars(continent))+
   scale_color_viridis_d(option = 'magma')+
   guides(colour = "none")+
@@ -148,9 +149,9 @@ ggplot(df_clean,
        aes(x = year,
            y = inflation,
            colour = country))+
-  geom_line()+
+  geom_line(alpha = 0.5)+
   scale_y_continuous("Inflación Interanual [asinh(%)]", trans = "asinh")+
-  facet_wrap(vars(continent))+
+  facet_wrap(vars(continent), scales = "free_y")+
   scale_color_viridis_d(option = 'magma')+
   guides(colour = "none")+
   theme_minimal()+
@@ -198,7 +199,7 @@ ggplot(df_clean,
        aes(x = inflation,
            y = lifeExp,
            colour = country))+
-  geom_point()+
+  geom_point(alpha = 0.25)+
   scale_color_viridis_d()+
   guides(colour = "none")+
   scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
@@ -220,10 +221,10 @@ ggplot(df_clean,
        aes(x = inflation,
            y = lifeExp,
            colour = country))+
-  geom_point()+
+  geom_point(alpha = 0.5)+
   scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
   theme_minimal()+
-  facet_wrap(vars(continent))+
+  facet_wrap(vars(continent), scales = "free_y")+
   guides(colour = "none")+
   scale_color_viridis_d()+
   labs(title = "Correlación inflación interanual y esperanza de vida (1960-2024)",
@@ -241,7 +242,7 @@ ggplot(filter(df_clean, continent == "South America"),
        aes(x = inflation,
            y = lifeExp,
            colour = country))+
-  geom_point()+
+  geom_point(alpha = 0.5)+
   scale_color_viridis_d()+
   scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
   theme_minimal()+
@@ -259,7 +260,7 @@ ggplot(filter(df_clean, continent == "South America"),
        aes(x = inflation,
            y = lifeExp,
            colour = year))+
-  geom_point()+
+  geom_point(alpha = 0.25)+
   scale_x_continuous("Inflación Interanual [asinh(%)])", trans = "asinh")+
   theme_minimal()+
   facet_wrap(vars(country))+
