@@ -1,0 +1,113 @@
+---
+title: "EPH"
+output: html_document
+date: "2025-09-14"
+author:  
+  - Licenciatura en Ciencias de Datos - UNSAM
+  - Visualización de datos en R
+  - Septiembre 2025
+  - Marcelo Gabriel Ulrich
+---
+
+
+# Clase 6: Encuesta Permanente de Hogares
+
+### Paquetes
+
+```{r message=FALSE, warning=FALSE}
+library(eph)
+library(ggplot2)
+library(dplyr)
+library(forcats)
+library(tidyr)
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, comment = "")
+```
+
+
+### Datos
+
+
+```{r}
+data_1t <- get_microdata(year = 2024, trimester = 1, type = 'individual')
+data_2t <- get_microdata(year = 2024, trimester = 2, type = 'individual')
+data_3t <- get_microdata(year = 2024, trimester = 3, type = 'individual')
+
+data <- rbind(data_1t, data_2t, data_3t)
+
+data <- organize_labels(data, type = "individual")
+
+data
+
+```
+
+
+###  Ejercicio 1
+
+¿Cómo se distribuyen los estados ocupacionales por género? 
+
+Realizá un gráfico de barras, utilizá colores y funciones necesarias para formatear los datos logrando su correcta visualización.
+
+Tené en cuenta que hay que filtrar aquellos casos que no corresponden (los menores de 10 años).
+
+---
+
+Entiendiendo los estados ocupacionales como Ocupado, Desocupado e Inactivo, necesito usar la variable ESTADO y CH04. Entiendo, segun la documentación de la clase, ESTADO solo se aplica para mayores de 10 años, por lo que no debería haber problemas, pero por las dudas chequeo.
+
+Pruebo de usar la función de la libería EPH, genera las tabulaciones en base a los datos.
+
+
+```{r}
+calculate_tabulates(data, x = "ESTADO", y = "CH04", add.totals = "none", add.percentage = "col")
+```
+
+Entiendo que como importe los datos a nivel individuo, debería usar el PONDIIO como parametro weights
+
+```{r}
+calculate_tabulates(data, x = "ESTADO", y = "CH04", weights = "PONDIIO", add.totals = "none", add.percentage = "col")
+```
+
+No hay mucha diferencia, pero aun así es clave hacerlo.
+
+
+Ahora sí, figuran los menores de 10 años y los que no se les realizo el cuestionario individual. Los filtro y vuelvo a correr
+
+
+```{r}
+data_ej1 <- calculate_tabulates(filter(data, ! ESTADO %in% c("4", "0")), x = "ESTADO", y = "CH04", weights = "PONDIIO", add.totals = "none", add.percentage = "col")
+data_ej1
+```
+
+
+Me fijo a cuantos dejé afuera (para tenerlo en cuenta)
+```{r}
+nrow(filter(data, ESTADO %in% c("4", "0")))
+```
+
+```{r}
+data_ej1 <- data_ej1 %>%
+  pivot_longer(
+    cols = c("Varon", "Mujer"),
+    names_to= "Sexo",
+    values_to = "Porcentaje"
+  ) %>%
+  rename(Estado = "ESTADO/CH04")
+```
+
+
+```{r}
+# Crear el gráfico de barras agrupadas
+ggplot(data_ej1, aes(x = Estado, y = Porcentaje, fill = Sexo)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Estados ocupacionales por sexo | 2024",
+    subtitle = "Excluyendo menores de 10 años y hogares no encuestados individualmente",
+    x = "Estado ocupacional",
+    y = "Porcentaje (%)",
+    fill = "Sexo",
+    caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R ‘eph’ (Kozlowski et al, 2020)"
+  ) + 
+  scale_fill_manual(values = c("Varon" = "lightblue", "Mujer" = "pink"))+
+  theme_minimal()
+```
+
