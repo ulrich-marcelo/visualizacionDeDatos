@@ -44,7 +44,7 @@ data
 ```
 
 
-###  Ejercicio 1
+### Ejercicio 1
 
 ¿Cómo se distribuyen los estados ocupacionales por género? 
 
@@ -117,7 +117,7 @@ ggplot(data_ej1, aes(x = Estado, y = Porcentaje, fill = Sexo)) +
 
 Listo, no?
 
-###  Ejercicio 2
+### Ejercicio 2
 
 Mostrá en un gráfico la distribución de probabilidad de la variable ingresos de asalariados según región. De nuevo, tené en cuenta con filtrar aquellos casos que no corresponden (los no-asalariados).
 
@@ -240,12 +240,12 @@ ggplot(data_ej2, aes(x = P21, y = as.factor(REGION), fill = as.factor(REGION))) 
 Acá podemos ver más en detalle que los picos de Nordeste y Noroeste son más pronunciados y sus colas más cortas que las del resto, reforzando la noción de ser las regiones con menores ingresos para los asalariados.
 
 
-###  Ejercicio 3
+### Ejercicio 3
 Escapando a las barras: utilizá un boxplot para describir la relación entre el nivel de ingresos de los asalariados por región y sexo. Describí estas relaciones.
 
 ```{r}
 data_ej3 <- data[,c("P21", "ESTADO", "CAT_OCUP", "REGION", "CH04")]
-data_ej3 <- filter(data_ej3, ESTADO == "1" & CAT_OCUP == "3" & P21 != "-9")
+data_ej3 <- filter(data_ej3, ESTADO == "1" & CAT_OCUP == "3" & P21 > 0)
 data_ej3
 ```
 
@@ -282,4 +282,96 @@ ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
 
 ### Ejercicio 4
 Experimentá con tres recursos (“treemaps”, “enjambres de abejas”, gráficos de waffle, gráficos de violín, “ridgeline plots” o mapas de calor) aporta insights de interés sobre nuestro conjunto de datos.
+
+El primer gráfico que quiero hacer es un violinplot para lo graficado en el ejercicio 3. Banco el boxplot pero creo que hay información que el violinplot muestra más.
+
+
+```{r}
+ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
+  geom_violin(trim = FALSE, width = 1) +
+  geom_boxplot(width = 0.1, outliers = FALSE, position = position_dodge(width = 1))+
+  scale_y_continuous(limits = c(0, 1500000))+
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal()+
+  labs(title = "Distribuciones salariales por región, año 2024",
+       subtitle = "Segmentado por sexo, zoom-in en salarios < $1.5M",
+       x = "Región",
+       y = "Ingreso individual de la ocupación principal",
+       fill = "Género",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+Las distribuciones parecen caer mas pronunciadamente en los plots de varones que de mujeres para los ingresos más bajos. Esto me hace preguntar si la diferencia en las medianas marcadas por los boxplot será producto de la desigualdad de genero o porque no estan faltando datos? Quizás al usar la variable p47T (Monto de ingreso total por otras ocupaciones) haya alguna diferencia...
+
+```{r}
+data_ej4_0 <- data[,c("P47T", "ESTADO", "CAT_OCUP", "REGION", "CH04")]
+data_ej4_0 <- filter(data_ej4_0, ESTADO == "1" & CAT_OCUP == "3" & P47T > 0)
+data_ej4_0$P47T
+```
+
+```{r}
+ggplot(data_ej4_0, aes(x = as.factor(REGION), y = P47T, fill = as.factor(CH04))) +
+  geom_violin(trim = FALSE, width = 1) +
+  geom_boxplot(width = 0.1, outliers = FALSE, position = position_dodge(width = 1))+
+  scale_y_continuous(limits = c(0, 1500000))+
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal()+
+  labs(title = "Distribuciones salariales por región, año 2024",
+       subtitle = "Segmentado por sexo, zoom-in en salarios < $1.5M",
+       x = "Región",
+       y = "MONTO DE INGRESO TOTAL INDIVIDUAL",
+       fill = "Género",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+
+Si bien sigue habiendo medianas mayores en las distribuciones de los varones, estas distribuciones se acercan más entre sí. Salvo por GBA y Patagonia, donde sigue habiendo una mayor diferencia (quizás por la cantidad de varones de altos ingreso que hay en esas regiones).
+
+Agrego la versión beeswarm por gusto.
+
+Comparo las distribuciones al usar uno u otro indicador de ingreso.
+
+```{r}
+# Create a 'source' variable in each dataset
+dataset1_combined <- data_ej3 %>%
+  mutate(origen = "P21") %>%
+  mutate(ingreso = P21)
+
+dataset2_combined <- data_ej4_0 %>%
+  mutate(origen = "P47T") %>%
+  mutate(ingreso = P47T)
+
+# Combine the two datasets into one
+combined_data <- bind_rows(dataset1_combined, dataset2_combined)
+```
+
+
+```{r}
+ggplot(combined_data, aes(x = origen, y = ingreso, fill = factor(CH04))) +
+  geom_boxplot() +
+  facet_wrap(factor(combined_data$CH04)) +
+  scale_y_continuous(limits = c(0, 1500000)) +
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal() +
+  labs(title = "Ingreso individual de la ocupación principal por dataset y sexo",
+       x = "Fuente de los datos",
+       y = "Ingreso individual",
+       fill = "Fuente")
+```
+
+
+Acá vemos que al usar p47T la mediana de las mujeres sube más. Habría que ver por qué. En la EPH dice que p47T es la suma de ingresos laborales y no laborales. Eso correspondería con P21 (actividad principal), Tot_p12 (actividades secundarias y ortas ocupaciones) y T_Vi (total montos no laborales: Ayuda social, alquileres, ganancia financiera, etc). No sigo por acá porque no termino más con las visualizaciones sino...
+
+
+--- 
+
+Yendome de este tema (y para jugar un poco con la de hogares en vez de la individual), voy a explorar un tema que me parece fundamental: el baño.
+
+
+
+
+
 
