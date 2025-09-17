@@ -20,8 +20,10 @@ library(ggplot2)
 library(dplyr)
 library(forcats)
 library(tidyr)
+library(ggridges)
 
 knitr::opts_chunk$set(message = FALSE, warning = FALSE, comment = "")
+options(scipen = 999)
 ```
 
 
@@ -78,11 +80,13 @@ data_ej1 <- calculate_tabulates(filter(data, ! ESTADO %in% c("4", "0")), x = "ES
 data_ej1
 ```
 
-
 Me fijo a cuantos dejé afuera (para tenerlo en cuenta)
+
 ```{r}
 nrow(filter(data, ESTADO %in% c("4", "0")))
 ```
+
+Modifico para graficar
 
 ```{r}
 data_ej1 <- data_ej1 %>%
@@ -100,7 +104,7 @@ data_ej1 <- data_ej1 %>%
 ggplot(data_ej1, aes(x = Estado, y = Porcentaje, fill = Sexo)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(
-    title = "Estados ocupacionales por sexo | 2024",
+    title = "Estados ocupacionales por sexo, año 2024",
     subtitle = "Excluyendo menores de 10 años y hogares no encuestados individualmente",
     x = "Estado ocupacional",
     y = "Porcentaje (%)",
@@ -110,4 +114,172 @@ ggplot(data_ej1, aes(x = Estado, y = Porcentaje, fill = Sexo)) +
   scale_fill_manual(values = c("Varon" = "lightblue", "Mujer" = "pink"))+
   theme_minimal()
 ```
+
+Listo, no?
+
+###  Ejercicio 2
+
+Mostrá en un gráfico la distribución de probabilidad de la variable ingresos de asalariados según región. De nuevo, tené en cuenta con filtrar aquellos casos que no corresponden (los no-asalariados).
+
+---
+
+
+Los datos necesarios son:
+- P21 → Ingreso individual de la ocupación principal.
+- ESTADO == "1" para ocupados
+- CAT_OCUP == "3" para asalariados
+- REGION
+
+```{r}
+data_ej2 <- data[,c("P21", "ESTADO", "CAT_OCUP", "REGION")]
+data_ej2 <- filter(data_ej2, ESTADO == "1" & CAT_OCUP == "3")
+data_ej2
+```
+
+Oh no! Hay salarios -9... Qué significa?
+
+
+```{r}
+filter(data, P21 == "-9")
+```
+
+No tengo idea, fuí a revisar si había algo sobre eso y no encontré nada...
+Decido filtrarlo y listo.
+
+```{r}
+data_ej2 <- data[,c("P21", "ESTADO", "CAT_OCUP", "REGION")]
+data_ej2 <- filter(data_ej2, ESTADO == "1" & CAT_OCUP == "3" & P21 != "-9")
+data_ej2
+```
+
+
+Nota: "che, que pocas filas, de los 140000 iniciales solo 38000 son asalariados..."
+
+Ahora grafico la distribución
+
+```{r}
+ggplot(data_ej2, aes(
+  x = P21))+
+  geom_density()+
+  scale_x_continuous(labels = scales::label_number())+
+  theme_minimal()+
+  labs(title = "Distribución del salario en Argentina, año 2024",
+       subtitle = "Para personas asalariadas, según EPH.",
+       x = "Ingreso individual de la ocupación principal",
+       y = "Densidad de probabilidad",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R ‘eph’ (Kozlowski et al, 2020)")
+
+```
+
+Un parorama totalmente desalentador...
+
+Ahora, hago un facetado por región.
+
+```{r}
+ggplot(data_ej2, aes(x = P21, y = as.factor(REGION), fill = as.factor(REGION))) +
+  geom_boxplot() +
+  scale_x_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ",")) +
+  theme_minimal() +
+  labs(
+    title = "Distribución del salario en Argentina por región, año 2024",
+    subtitle = "Para personas asalariadas, según EPH.",
+    x = "Ingreso individual de la ocupación principal",
+    y = "Región",
+    fill = "Región",
+    caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)"
+  ) +
+  theme(
+    plot.caption = element_text(hjust = 0)  # Align caption to the right
+  )
+```
+
+Con esta manera de graficar es dificil comparar las medianas, pero las diferencias entre los outliers nos da una pauta: GBA y la Patagonia son las regiones más ricas del pais, seguidas de cerca por la llanura Pampeana.
+
+Ahora si grafico la distribución de probabilidades, usandeo ridge
+
+```{r}
+ggplot(data_ej2, aes(x = P21, y = as.factor(REGION), fill = as.factor(REGION))) +
+  geom_density_ridges() +
+  scale_x_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ",")) +
+  theme_minimal() +
+  labs(
+    title = "Distribución del salario en Argentina por región, año 2024",
+    subtitle = "Para personas asalariadas, según EPH.",
+    x = "Ingreso individual de la ocupación principal",
+    y = "Región",
+    fill = "Región",
+    caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)"
+  ) +
+  theme(
+    plot.caption = element_text(hjust = 0)  # Align caption to the right
+  )
+```
+
+Hago zoom para los <$3M para ver mejor las diferencias
+
+
+```{r}
+ggplot(data_ej2, aes(x = P21, y = as.factor(REGION), fill = as.factor(REGION))) +
+  geom_density_ridges() +
+  scale_x_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ","),
+                     limits = c(0, 3000000)) +
+  theme_minimal() +
+  labs(
+    title = "Distribución del salario en Argentina por región, año 2024",
+    subtitle = "Para personas asalariadas, según EPH.",
+    x = "Ingreso individual de la ocupación principal",
+    y = "Región",
+    fill = "Región",
+    caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)"
+  ) +
+  theme(
+    plot.caption = element_text(hjust = 0)  # Align caption to the right
+  )
+```
+
+Acá podemos ver más en detalle que los picos de Nordeste y Noroeste son más pronunciados y sus colas más cortas que las del resto, reforzando la noción de ser las regiones con menores ingresos para los asalariados.
+
+
+###  Ejercicio 3
+Escapando a las barras: utilizá un boxplot para describir la relación entre el nivel de ingresos de los asalariados por región y sexo. Describí estas relaciones.
+
+```{r}
+data_ej3 <- data[,c("P21", "ESTADO", "CAT_OCUP", "REGION", "CH04")]
+data_ej3 <- filter(data_ej3, ESTADO == "1" & CAT_OCUP == "3" & P21 != "-9")
+data_ej3
+```
+
+```{r}
+ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal()+
+  labs(title = "Distribuciones salariales por región, año 2024",
+       subtitle = "Segmentado por sexo",
+       x = "Región",
+       y = "Ingreso individual de la ocupación principal",
+       fill = "Género",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+```{r}
+ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 1500000))+
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal()+
+  labs(title = "Distribuciones salariales por región, año 2024",
+       subtitle = "Segmentado por sexo, zoom-in en salarios < $1.5M",
+       x = "Región",
+       y = "Ingreso individual de la ocupación principal",
+       fill = "Género",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+
+
+### Ejercicio 4
+Experimentá con tres recursos (“treemaps”, “enjambres de abejas”, gráficos de waffle, gráficos de violín, “ridgeline plots” o mapas de calor) aporta insights de interés sobre nuestro conjunto de datos.
 
