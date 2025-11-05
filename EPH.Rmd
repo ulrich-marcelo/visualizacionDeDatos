@@ -46,7 +46,7 @@ data
 ```
 
 
-###  Ejercicio 1
+### Ejercicio 1
 
 ¿Cómo se distribuyen los estados ocupacionales por género? 
 
@@ -119,7 +119,7 @@ ggplot(data_ej1, aes(x = Estado, y = Porcentaje, fill = Sexo)) +
 
 Listo, no?
 
-###  Ejercicio 2
+### Ejercicio 2
 
 Mostrá en un gráfico la distribución de probabilidad de la variable ingresos de asalariados según región. De nuevo, tené en cuenta con filtrar aquellos casos que no corresponden (los no-asalariados).
 
@@ -242,12 +242,12 @@ ggplot(data_ej2, aes(x = P21, y = as.factor(REGION), fill = as.factor(REGION))) 
 Acá podemos ver más en detalle que los picos de Nordeste y Noroeste son más pronunciados y sus colas más cortas que las del resto, reforzando la noción de ser las regiones con menores ingresos para los asalariados.
 
 
-###  Ejercicio 3
+### Ejercicio 3
 Escapando a las barras: utilizá un boxplot para describir la relación entre el nivel de ingresos de los asalariados por región y sexo. Describí estas relaciones.
 
 ```{r}
 data_ej3 <- data[,c("P21", "ESTADO", "CAT_OCUP", "REGION", "CH04")]
-data_ej3 <- filter(data_ej3, ESTADO == "1" & CAT_OCUP == "3" & P21 != "-9")
+data_ej3 <- filter(data_ej3, ESTADO == "1" & CAT_OCUP == "3" & P21 > 0)
 data_ej3
 ```
 
