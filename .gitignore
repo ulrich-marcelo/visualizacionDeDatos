@@ -1,1 +1,25 @@
 .venv
+# Archivos que causan el error
+tp/Integrador 1/Integrador 1/data/integrador1/total_clae2imputado.csv
+tp/Integrador 1.zip
+
+# Archivos que superan los 100 MB
+tp/Integrador 1.zip
+tp/Integrador_Ulrich_Terreno/data/total_clae2imputado.csv
+
+# Archivos que causan advertencias y son grandes (opcional, pero recomendado)
+tp.rar
+tp/Integrador_Ulrich_Terreno.zip
+tp/Integrador 1/Integrador 1/data/integrador1/tot_emp_clae2.csv
+data/arboles.csv
+tp/Integrador 1/Integrador 1/data/integrador1/priv_clae2.csv
+tp/Integrador 1/Integrador 1/data/integrador1/total_clae2.csv
+tp/Integrador 1/Integrador 1/data/integrador1/total_letra_imputado.csv
+data/integrador1.rar
+
+# Otras carpetas o archivos de datos grandes que quieres ignorar
+# Por si acaso eliminas los .zip y .rar del historial
+*.zip
+*.rar
+data/
+tp/
