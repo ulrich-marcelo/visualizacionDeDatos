@@ -21,6 +21,8 @@ library(dplyr)
 library(forcats)
 library(tidyr)
 library(ggridges)
+library(treemapify)
+
 
 knitr::opts_chunk$set(message = FALSE, warning = FALSE, comment = "")
 options(scipen = 999)
@@ -161,7 +163,7 @@ Ahora grafico la distribución
 ggplot(data_ej2, aes(
   x = P21))+
   geom_density()+
-  scale_x_continuous(labels = scales::label_number())+
+  scale_x_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ","))+
   theme_minimal()+
   labs(title = "Distribución del salario en Argentina, año 2024",
        subtitle = "Para personas asalariadas, según EPH.",
@@ -254,6 +256,7 @@ ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
   geom_boxplot() +
   scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
                     name = "Sexo")+
+  scale_y_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ","))+
   theme_minimal()+
   labs(title = "Distribuciones salariales por región, año 2024",
        subtitle = "Segmentado por sexo",
@@ -266,7 +269,8 @@ ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
 ```{r}
 ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
   geom_boxplot() +
-  scale_y_continuous(limits = c(0, 1500000))+
+  scale_y_continuous(limits = c(0, 1500000),
+                     labels = scales::label_number(big.mark = ".", decimal.mark = ","))+
   scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
                     name = "Sexo")+
   theme_minimal()+
@@ -282,4 +286,94 @@ ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
 
 ### Ejercicio 4
 Experimentá con tres recursos (“treemaps”, “enjambres de abejas”, gráficos de waffle, gráficos de violín, “ridgeline plots” o mapas de calor) aporta insights de interés sobre nuestro conjunto de datos.
+
+Primero armo un violinplot para el ejercicio anterior
+
+```{r}
+ggplot(data_ej3, aes(x = as.factor(REGION), y = P21, fill = as.factor(CH04))) +
+  geom_violin() +
+  scale_y_continuous(limits = c(0, 1500000),
+                     labels = scales::label_number(big.mark = ".", decimal.mark = ","))+
+  scale_fill_manual(values = c("Varon"="lightblue", "Mujer"="pink"),
+                    name = "Sexo")+
+  theme_minimal()+
+  labs(title = "Distribuciones salariales por región, año 2024",
+       subtitle = "Segmentado por sexo, zoom-in en salarios < $1.5M",
+       x = "Región",
+       y = "Ingreso individual de la ocupación principal",
+       fill = "Género",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+Acá vemos mucho mejor cada distribución salarial. En particular me llama la atención las "pendientes" más pronunciadas de las distribuciones de varones para los deciles más bajos. Es como si no hubiese casi varones ahí.
+
+Se me ocurre que puede ser que no sean asalariados, que figuren como cuenta propista. O quizás son esos que filtramos por no tener la variable P21 en condiciones (salario menor a cero)...
+
+
+
+
+Todo esto era para los asalariados, pero ahora quiero explorar el resto de la sociedad, en particular, a los inactivos. En particular: quienes son?
+
+
+```{r}
+data_inactivos <- calculate_tabulates(filter(data, ESTADO == "3"), x = "CAT_INAC",add.percentage = "col")
+data_inactivos
+```
+
+
+
+```{r}
+
+library(treemapify)
+
+
+ggplot(data_inactivos, aes(fill=CAT_INAC, area=Freq, label = scales::percent(Freq/100)))+
+  geom_treemap()+
+  geom_treemap_text(place = "center",)+
+  theme_minimal()+
+  labs(title="Composición de población inactiva",
+       fill = "Categoría de Inactividad",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)") +
+  theme(
+    plot.caption = element_text(hjust = 0),
+    plot.title = element_text(hjust = 1)
+  )
+
+
+
+```
+
+Estos estudiantes inactivos, son todos alumnos menores o son adultos?
+
+```{r}
+ggplot(filter(data, CAT_INAC == "3"), aes(x=CH06))+
+  geom_density()+
+  theme_minimal()+
+  labs(title = "Distribución etaria de inactivos-estudiantes",
+       x = "Edad",
+       y = "densidad",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)"
+       )
+```
+
+Era medio obvio, no?
+
+
+Y la distribución etarea de estudiantes mayores de edad?
+
+```{r}
+ggplot(filter(data, CAT_INAC == "3" & as.numeric(CH06) > 18), aes(y=as.numeric(CH06), x="Mayores de edad"))+
+  geom_violin()+
+  theme_minimal()+
+  labs(title="Distribución etaria para estudiantes mayores de 18 años",
+       subtitle = "Categorizados como Inactivos ocupacionalmente por la EPH.",
+       y = "Edad",
+       caption = "Fuente: Encuesta Permanente de Hogares (EPH-INDEC), vía paquete de R 'eph' (Kozlowski et al, 2020)")
+```
+
+Efectivamente, lo esperable: los estudiantes mayores de 18 que no tienen una ocupación laboral suelen estar alrededor de los 20 años.
+
+
+Muy poco analisis, lo sé. No estoy contento con esta entrega la verdad. Se me pasó y a esto es lo que llegué... Perdón profe </3
+
 

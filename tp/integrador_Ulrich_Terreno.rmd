@@ -1,0 +1,392 @@
+---
+title: "Integrador 1"
+author: 
+  - Licenciatura en Ciencias de Datos - UNSAM
+  - Visualización de datos en R
+  - Octubre 2025
+  - Marcelo Ulrich
+  - Lautaro Terreno
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+---
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(dplyr)
+library(plotly)
+library(scales)
+library(tidyverse)
+
+
+departamentos <- read_sf("data/integrador1/lauti.geojson")
+
+# Configurar API key de Stadia (requiere registro gratuito en stadiamaps.com)
+register_stadiamaps("832b3fcf-98e0-463f-b5a5-f59be83b2cdd")
+
+# Crear bbox compatible con ggmap
+# ggmap requiere el formato: c(left, bottom, right, top)
+bbox <- st_bbox(departamentos)
+bbox_ggmap <- c(left = as.numeric(bbox[1]), 
+                bottom = as.numeric(bbox[2]), 
+                right = as.numeric(bbox[3]), 
+                top = as.numeric(bbox[4]))
+```
+
+
+```{r data}
+
+total_clae2 <- read.csv("data/integrador1/total_clae2.csv")
+priv <- read.csv("data/integrador1/priv.csv")
+pub <- read.csv("data/integrador1/pub.csv")
+tot_emp <- read.csv("data/integrador1/tot_emp.csv")
+total <- read.csv("data/integrador1/total.csv")
+priv_letra <- read.csv("data/integrador1/priv_letra.csv")
+priv_clae2 <- read.csv("data/integrador1/priv_clae2.csv")
+tot_emp_letra <- read.csv("data/integrador1/tot_emp_letra.csv")
+total_letra <- read.csv("data/integrador1/total_letra.csv")
+tot_emp_clae2 <- read.csv("data/integrador1/tot_emp_clae2.csv")
+
+dict_clae2 <- read.csv("data/integrador1/dic_clae2.csv")
+dict_dptos <- read.csv("data/integrador1/dic_cod_depto.csv")
+
+
+```
+
+```{r mapa}
+
+ggplot(departamentos) + geom_sf()
+
+```
+# NOTAS METODOLOGICAS
+0. Usamos mediana en vez de medias/promedio. Es más representativo que el promedio.
+
+1. Encontramos que en todos los datasets* [chequear], hay departamentos que no aparecen. Son los siguientes: 42042, 22161, 26049, 42084, 42091 y 66077. Para solucionar esto, decidimos asignarles el promedio de los departamentos de la provincia (más facil codigo) o de los departamentos adyacentes (más correcto).
+
+2. El geojson provisto no contiene a Tierra del Fuego (ni las islas ni antartida). Por lo tanto, decidimos buscar un geojson que la incluya (IGN, poner link o algo). Además, por motivos de legibilidad del grafico (y sentido economico), decidimos dejar fuera del analisis a la Antartida y al resto de islas del Altantico Sur (excepto las Malvinas, para visibilizar el reclamo de soberanía nacional).
+2.1 Los datos, tampoco contienen todos los departamentos de TdF. En particular, hay 2 departamentos que tienen el codigo distinto entre el diccionario provisto por la pagina y el geojson de IGN (Ushuaia y Río Grande). Los modificamos a mano en el geojson.
+2.2 El tercer departamento de TdF, Tolhuin, figura en el diccionario provisto en conujunto con Río Grande, es decir, los datos que dicen ser de Río Grande en realidad son de ambos. Por lo que modificamos su codigo en el geojson para pintar a ambos de la misma manera.
+2.3 El unico departamento de TdF que queda sin datos es, obvio, Malivinas. Por lo que, para generar impacto en los gráficos, decidimos pintarlas con los colores patrios.
+
+
+# Tareas a realizar:
+
+Notas para todas:
+1. Para todos, usar selector así elegir datos privados, publicos, empresas y total.
+En caso de complicarse, presentar por separado
+
+Consigna 1: Ya tenemos el grafico de "ultima foto".
+IDEA: Hacerlo animado, agregando slider de fecha, para poder aprovechar todos los datos.
+Problemas:
+1. Hay que normalizar en relacion al dolar (oficial). Porque, por la inflación, las diferencias entre 2014 y 2023 van a ser muy grandes y no van a tener un sentido real.
+
+IDEA2: Hover para ver departamentos, provincia y valores
+
+
+
+Consigna 2: Todo falta
+En vez de barras (iu) ponerlo como lollipop (paletas, pirulines)
+IDEAS: Animación, carrera de barras (ver compatibilidad con selector)
+
+UPDATE: a partir de hacer el lollipop, me encontré con que hay datos que están mal. Tenemos que hacer limpieza de datos... (mediana de salarios como -99). Leyendo el desgolce de la pagina del gobierno, el -99 representa datos generados con 1 o 2 fuentes de empleo (trabajadores). Esto se hace para "preservar el secreto estadistico". Yo diria de asignarles el promedio (mejor mediana) de los deptos aledaños (lio, mejor mediana provincial y sectorial).
+
+Para hacer la animación podemos usar plotly (según gemini tiene opcion de manejo manual y auto-slider). Tenemos que pensar como generar la estructura de los datos...
+
+Consigna 3: Todo
+Grafico simple de lineas
+IDEAS: ver de hacerlo animado (asi crece las lineas)
+
+
+
+
+
+
+# 1: mayores salarios medianos
+
+1. Conectar datos con geometrias (agregar a cada dataset las geometrías correspondientes)
+2. Usar un slider para la fecha
+
+```{r}
+#departamentos_faltantes <- departamentos[
+#  !(departamentos$codigo_departamento_indec %in% total$codigo_departamento_indec),
+#]
+#departamentos_faltantes2 <- total[
+#  !(total$codigo_departamento_indec %in% departamentos$codigo_departamento_indec),
+#]
+```
+
+
+```{r}
+malvinas <- departamentos %>%
+  filter(codigo_departamento_indec == 94021)
+```
+
+
+```{r valores faltantes}
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# --- 1) Asegurar tipos consistentes ---
+total <- total %>%
+  mutate(
+    fecha = as.Date(fecha),
+    mes = floor_date(fecha, "month"),
+    codigo_departamento_indec = as.integer(codigo_departamento_indec),
+    id_provincia_indec = as.integer(id_provincia_indec),
+    w_median = as.numeric(w_median)
+  )
+
+# --- 2) Lista de vecinos (faltantes manuales) ---
+lista_vecinos <- list(
+  `22161` = c(22168, 22119, 22056, 22077, 22140, 22147, 22098, 82133, 82049),
+  `26049` = c(26105, 26063, 26070, 26014, 26056, 62091),
+  `42042` = c(42154, 42112, 62014, 62042),
+  `42084` = c(62014, 62063, 42077, 42014),
+  `42091` = c(42049, 42154, 42112),
+  `66077` = c(66028, 66049, 66147, 38014, 38056)
+)
+
+# --- 3) Expandir a tabla larga (faltante–vecino) ---
+map_tbl <- tibble(
+  codigo_departamento_indec = as.integer(names(lista_vecinos)),
+  lista_vecinos = lista_vecinos
+) %>%
+  unnest_longer(lista_vecinos, values_to = "id_vecino") %>%
+  mutate(id_vecino = as.integer(id_vecino))
+
+# --- 4) Traer valores de vecinos por mes ---
+vals_vecinos <- map_tbl %>%
+  left_join(
+    total %>% select(codigo_departamento_indec, mes, w_median),
+    by = c("id_vecino" = "codigo_departamento_indec")
+  )
+
+# --- 5) Promedio de vecinos por faltante y mes ---
+prom_vecinos <- vals_vecinos %>%
+  group_by(codigo_departamento_indec, mes) %>%
+  summarise(w_median = mean(w_median, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(w_median))
+
+# --- 6) Obtener id_provincia_indec desde departamentos ---
+dept_meta <- departamentos %>%
+  st_drop_geometry() %>%
+  select(codigo_departamento_indec, id_provincia_indec = codpcia) %>%
+  distinct() %>% mutate(
+    codigo_departamento_indec = as.integer(codigo_departamento_indec),
+    id_provincia_indec = as.integer(id_provincia_indec)
+  )
+
+# --- 7) Armar filas nuevas y agregarlas a total ---
+nuevas_filas <- prom_vecinos %>%
+  left_join(dept_meta, by = "codigo_departamento_indec") %>%
+  mutate(
+    fecha = mes,
+    imputado_vecinos = TRUE
+  ) %>%
+  select(fecha, codigo_departamento_indec, id_provincia_indec, w_median, mes, imputado_vecinos)
+
+# --- 8) Agregar a total y ordenar ---
+total <- bind_rows(total, nuevas_filas) %>%
+  distinct(codigo_departamento_indec, mes, .keep_all = TRUE) %>%  # por seguridad
+  arrange(mes, codigo_departamento_indec)
+
+# --- 9) Reporte ---
+message("✅ Filas nuevas agregadas: ", nrow(nuevas_filas))
+
+
+```
+```{r}
+departamentos$codigo_departamento_indec <- as.numeric(departamentos$codigo_departamento_indec)
+total_geo <- left_join(x = total,y = departamentos, by = "codigo_departamento_indec")
+total_geo <- left_join(x = total_geo,y = dict_dptos, by = "codigo_departamento_indec")
+total_geo <- total_geo %>%
+  select(fecha, departamen, provincia, w_median, geometry) %>%
+  filter(fecha == "2023-10-01")
+total_geo <- drop_na(total_geo)
+```
+
+
+```{r}
+library(sf)
+library(ggplot2)
+library(plotly)
+library(scales)
+library(viridis)
+
+# asegurar sf
+total_geo_sf <- st_as_sf(total_geo, sf_column_name = "geometry")
+malvinas_sf  <- st_as_sf(malvinas, sf_column_name = "geometry")
+
+p <- ggplot() +
+  geom_sf(
+    data = total_geo_sf,
+    aes(
+      geometry = geometry,
+      fill = w_median,
+      text = paste0(
+        "<b>Provincia:</b> ", provincia,
+        "<br><b>Departamento:</b> ", departamen,
+        "<br><b>Mediana:</b> ", formatC(w_median, big.mark = ".", decimal.mark = ",", format = "f", digits = 0)
+      )
+    ),
+    color = NA
+  ) +
+  geom_sf(data = malvinas_sf, fill = "#75aadb", color = NA) +
+  scale_fill_viridis_c(
+    option = "magma",
+    labels = label_comma(big.mark = ".", decimal.mark = ","),
+    name = "Mediana"
+  ) +
+  theme_void()
+
+ggplotly(p, tooltip = "text")
+```
+### probando con priv
+```{r}
+departamentos_faltantes_priv <- departamentos[
+  !(departamentos$codigo_departamento_indec %in% priv$codigo_departamento_indec),
+]
+departamentos_faltantes2_priv <- priv[
+  !(priv$codigo_departamento_indec %in% departamentos$codigo_departamento_indec),
+]
+```
+
+
+```{r}
+departamentos$codigo_departamento_indec <- as.numeric(departamentos$codigo_departamento_indec)
+total_geo <- left_join(x = total,y = departamentos, by = "codigo_departamento_indec")
+total_geo <- total_geo %>%
+  select(fecha, w_median, geometry) %>%
+  filter(fecha == "2023-10-01")
+```
+
+
+```{r}
+ggplot()+
+  geom_sf(data = total_geo,
+          aes(fill = w_median, geometry = geometry), color = NA)+
+  scale_fill_viridis_c()
+```
+
+
+
+
+```{r}
+# Stadia Stamen Toner Lite: estilo minimalista ideal para visualización de datos
+mapa_base <- get_stadiamap(bbox_ggmap, 
+                          maptype = "stamen_toner_lite", 
+                          zoom = 8)
+
+ggmap(mapa_base) +
+  geom_sf(data = total, 
+          aes(color = w_median), 
+          linewidth = 0.7, 
+          inherit.aes = FALSE) +
+  scale_color_brewer(palette = "Set1") +
+  theme_void() +
+  labs(title = "Bares",
+       subtitle = "Ciudad Autónoma de Buenos Aires",
+       color = "Tipo de bar")
+```
+
+
+# 2. Top 5 sectores con salarios más bajos
+Este se hace con clae2, no con letra porque para hacer la media por letra se complica por no tener las cantidades de cada clae2 (no podemos ponderar por cantidad de trabajadores por clae2)
+
+```{r}
+total_clae2_20231001 <- total_clae2 %>%
+  filter(fecha == "2023-10-01") %>%
+  mutate(clae2 = as.factor(clae2))
+
+promedios_sectores <-  total_clae2_20231001 %>%
+  group_by(clae2)%>%
+  summarise(w_promedio = mean(w_median, na.rm = TRUE) )
+promedios_sectores
+```
+
+Me quedo con los peores 5
+
+```{r}
+top5 <- promedios_sectores %>%
+  arrange(w_promedio) %>%
+  head(5)
+```
+
+Agrego nombres
+
+```{r}
+dict_clae2 <- dict_clae2%>%
+  mutate(clae2 = as.factor(clae2))
+top5 <- left_join(x = top5, y = dict_clae2, by = "clae2")
+top5
+```
+
+
+
+```{r}
+ggplot(top5, aes(x = w_promedio, 
+                  y = fct_reorder(clae2_desc, w_promedio, .desc = TRUE))) +
+  geom_segment(aes(x = 0, 
+                   y = fct_reorder(clae2_desc, w_promedio, .desc = TRUE), 
+                   xend = w_promedio, 
+                   yend = fct_reorder(clae2_desc, w_promedio, .desc = TRUE))) +
+  geom_point()+
+  scale_y_discrete(labels = scales::label_wrap(width = 20)) +
+  labs(y = "Sector de la economía",
+       x = "Promedio del salario mediano del sector")+
+  theme_minimal()
+```
+
+Raro mensajería, a ver que pasa...
+
+```{r}
+mensajeria <- total_clae2 %>%
+  filter(fecha == "2023-10-01",
+         clae2 == 53) 
+```
+
+Viendo el dataset hay muchos departamentos con mediana -99. Esto es por diseño: en algunos departamentos-sectores, la mediana se calcula con 1 o 2 salarios, y con el fin de guardar el secreto estadistico, se decidió usar -99 para esos casos. Por eso el promedio de las medianas del sector tiende a hacerse más chico de lo que debería.
+
+Proponemos (INSTERTAR EN NOTA METODOLOGICA) asignarles el salario mediano de los vecinos.
+
+```{r}
+deptos_min <- departamentos %>%
+  select(departamen, provincia, codigo_departamento_indec, geometry)
+
+vecindades <- st_touches(deptos_min)
+
+adj_list <- lapply(vecindades, function(x) departamentos$codigo_departamento_indec[x])
+names(adj_list) <- departamentos$codigo_departamento_indec
+
+
+deptos_errores <- total_clae2_20231001 %>%
+  filter(w_median == -99) %>%
+  select(codigo_departamento_indec, clae2, w_median)
+
+
+
+```
+
+st_touches da una suerte de diccionario usando los indices que le pasemos. Ejemplo: la pasar deptos_min
+```{r}
+ejemplo <- deptos_min %>%
+  filter(codigo_departamento_indec %in% adj_list[[1]] | codigo_departamento_indec == 6091)
+
+ggplot(ejemplo[4,]) + geom_sf() + geom_sf_text(aes(label = departamen), size = 3)
+```
+
+Al usar [4, ] vemos como La Plata tiene una seccion no conexa, raro...
+
+```{r}
+sf_use_s2(FALSE)
+```
+
+```{r}
+st_is_valid(ejemplo[4, ])
+```
+

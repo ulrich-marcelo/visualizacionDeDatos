@@ -1,0 +1,467 @@
+---
+title: "Integrador 1"
+author: 
+  - Licenciatura en Ciencias de Datos - UNSAM
+  - Visualización de datos en R
+  - Octubre 2025
+  - Marcelo Ulrich
+  - Lautaro Terreno
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(dplyr)
+library(plotly)
+library(scales)
+library(tidyverse)
+library(viridis)
+library(crosstalk)
+library(stringr)
+
+# Esto seria ideal, hacer la conversión dentro del rmd. para que sea mas rápido y ande bien el html, 
+# directamente cargamos los CSV ya con este procesamiento en otro archivo R.
+
+#knitr::opts_chunk$set(echo = TRUE)
+#source("funcion_imputar.R")
+#total_imputado <- imputar_por_vecinos(
+#  data = total,
+#  departamentos = departamentos,
+#  group_cols = NULL,
+#  sentinel = -99,
+#  agg_fun = median,
+#  strict_border = FALSE
+#)
+
+departamentos <- read_sf("data/departamentos_arg2025_tdf.geojson") 
+departamentos$codigo_departamento_indec <- as.numeric(departamentos$codigo_departamento_indec)
+malvinas <- departamentos %>%
+  filter(codigo_departamento_indec == 94021)
+departamentos <- departamentos %>%
+  filter(codigo_departamento_indec != 94021)
+
+```
+
+
+```{r data, include=FALSE}
+
+total_clae2 <- read.csv("data/total_clae2imputado.csv") # imputado
+# total_clae2_base <- read.csv("data/total_clae2.csv")
+# priv <- read.csv("data/priv_imputado.csv") # imputado
+# pub <- read.csv("data/pub.csv") 
+# tot_emp <- read.csv("data/tot_emp.csv")
+total <- read.csv("data/total_imputado.csv") # imputado
+# priv_letra <- read.csv("data/priv_letra.csv")
+# priv_clae2 <- read.csv("data/priv_clae2.csv")
+# tot_emp_letra <- read.csv("data/tot_emp_letra.csv")
+total_letra <- read.csv("data/total_letra_imputado.csv") # imputado
+# tot_emp_clae2 <- read.csv("data/tot_emp_clae2.csv")
+
+dict_clae2 <- read.csv("data/dic_clae2.csv")
+dict_dptos <- read.csv("data/dic_cod_depto.csv")
+dict_provincias <- dict_dptos %>%
+  select(id_provincia_indec, nombre_provincia_indec) %>%
+  distinct(id_provincia_indec, nombre_provincia_indec)
+
+```
+
+### NOTAS METODOLÓGICAS
+
+* Usamos mediana en vez de medias/promedio. Es más representativo que el promedio.
+
+  * Encontramos que en todos los datasets, hay departamentos que no aparecen. Es decir, departamentos presentes en el geojson de los cuales no existen datos sobre los salarios. Para solucionar esto, decidimos asignarles el promedio de los departamentos adyacentes.
+
+  * También observamos que varios valores son -99. Investigamos sobre la forma en que se generó el dataset y encontramos que es una cuestión de diseño: en departamentos donde hay pocas personas que trabajen en determinado sector, se coloca -99 para mantener el secreto estadístico. Para evitar esta anomalía, también les asignamos el promedio de los departamentos adyacentes.
+
+  * Nos topamos con otra pared: ¿y si los departamentos adyacentes tampoco tienen valores? Para resolverlo, si no es posible imputarlo por vecinos, toma el promedio de la provincia (según clae2 y mes, obvio). Si tampoco es posible, toma el promedio nacional. 
+
+  * Todas estas transformaciones están en el script **funcion_imputar.R**.
+
+* El geojson provisto no contiene a Tierra del Fuego (ni las islas ni antartida). Por lo tanto, decidimos buscar un geojson que la incluya: [Lo encontramos en la base de datos nacional](https://infra.datos.gob.ar/georef-dev/departamentos.geojson). Sin embargo, al graficarlo todo vimos que se hacía ilegible (la Antártida ocupaba mucho espacio, haciendo que el análisis por departamentos no se pueda apreciar. Además, no tiene sentido económico incluirla, ya que allí no hay rubros de interes para este analisis. Por lo tanto, decidimos dejar fuera del análisis a la Antártida y al resto de Íslas del Altántico Sur (excepto las Malvinas, para visibilizar el reclamo de soberanía nacional).
+
+  * Los datos, tampoco contienen todos los departamentos de Tierra del Fuego. En particular, hay 2 departamentos que tienen el código distinto entre el diccionario provisto por la página y el geojson que usamos (Ushuaia y Río Grande). Los modificamos a mano en el geojson.
+
+  * El tercer departamento de Tierra del Fuego, Tolhuin, figura en el diccionario provisto en conjunto con Río Grande, es decir, los datos que dicen ser de Río Grande en realidad son de ambos. Por lo que modificamos su código en el geojson para pintar a ambos de la misma manera.
+
+  * El único departamento de TdF que queda sin datos es, obvio, Malvinas. Por lo que, para generar impacto en los gráficos, decidimos pintarlas con los colores patrios.
+
+* En los datos de salarios, hay NAs en departamento y provincia, por lo que al no poder indentificarlos, son eliminados.
+
+
+
+## Ejercicio 1: Media de salario por país
+
+Luego de recuperar los datos problemáticos (GeoJson, faltantes, secreto estadístico) tenemos todo para nuestro mapa. Como comentamos en las notas metodológicas, tomamos la mediana de los salarios por departamento. Usamos el dataset total que considera tanto a trabajadores estatales como privados, y analizamos los datos más recientes del dataset: Noviembre 2023.
+
+```{r Ejercicio 1, echo=FALSE, warning=FALSE}
+total_geo <- left_join(x = total,y = departamentos, by = "codigo_departamento_indec")
+total_geo <- left_join(x = total_geo,y = dict_dptos, by = "codigo_departamento_indec")
+total_geo <- total_geo %>%
+  select(fecha, departamen, provincia, w_median, geometry) %>%
+  filter(fecha == "2023-11-01")
+total_geo <- drop_na(total_geo)
+
+# asegurar sf
+total_geo_sf <- st_as_sf(total_geo, sf_column_name = "geometry")
+malvinas_sf  <- st_as_sf(malvinas, sf_column_name = "geometry")
+med_nac  <- median(total_geo_sf$w_median, na.rm = TRUE)
+med_nac_lab <- label_comma(big.mark = ".", decimal.mark = ",", accuracy = 1)(med_nac)
+titulo    <- "Mediana salarial por departamento — Argentina"
+subtitulo <- paste0("Última foto: Noviembre 2023 · Mediana nacional: ", med_nac_lab, " ARS")
+
+p <- ggplot() +
+  geom_sf(
+    data = total_geo_sf,
+    aes(
+      geometry = geometry,
+      fill = w_median,
+      text = paste0(
+        "<b>Provincia:</b> ", provincia,
+        "<br><b>Departamento:</b> ", departamen,
+        "<br><b>Mediana:</b> ", formatC(w_median, big.mark = ".", decimal.mark = ",", format = "f", digits = 0)
+      )
+    ),
+    color = NA
+  ) +
+  labs(title = titulo, subtitle = subtitulo) +
+  geom_sf(data = malvinas_sf, fill = "#75aadb", color = NA) +
+  scale_fill_viridis_c(
+    option = "magma",
+    labels = label_comma(big.mark = ".", decimal.mark = ","),
+    name = "Mediana del salario (ARS)"
+  ) +
+  theme_void()
+
+g <- ggplotly(p, tooltip = "text")
+
+for (i in seq_along(g$x$data)) {
+  if (!is.null(g$x$data[[i]]$line)) g$x$data[[i]]$line$width <- 0
+}
+
+# 2) formateo del colorbar 
+idx_cb <- which(vapply(g$x$data, function(tr) isTRUE(tr$showscale), logical(1)))[1]
+if (length(idx_cb) == 1 && !is.na(idx_cb)) {
+  g$x$data[[idx_cb]]$colorbar <- list(
+    title = list(text = "Mediana (ARS)"),
+    tickformat = ",.0f"
+  )
+}
+
+g <- g %>%
+  layout(
+    title = list(
+      text = paste0(
+        "<b>", titulo, "</b>",
+        "<br><sub>", subtitulo, "</sub>"
+      ),
+      x = 0, xanchor = "left"
+    ),
+    margin = list(t = 70, r = 10, b = 50, l = 10),
+    annotations = list(
+      list(
+        text = "Fuente: Datos Abiertos del Gobierno Nacional",
+        xref = "paper", yref = "paper",
+        x = 0, y = -0.12,
+        xanchor = "left", yanchor = "auto",
+        showarrow = FALSE,
+        font = list(size = 11, color = "gray40", family = "Arial")
+      )
+    )
+  )
+
+
+g
+```
+
+Elegimos una escala Magma para representar la diferencia en la mediana de los salarios del país por ser perceptualmente uniforme.
+
+Observamos una clara diferencia entre las principales zonas del país. La patagonia es la que tiende a ser la de mayor ingreso (incluyendo al departamento con mayor mediana), por los altos sueldos de la industria petrolera y sector turístico. La zona noroeste tiende a ser la de menor ingresos, concentrando esta tendencia en La Rioja (que es la provincia que tiene los departamentos con salarios mas bajos del mapa). En el centro del país se observa una punto medio entre la patagonia y el norte. Las provincias pampeanas varían poco dentro de sí mismas pero se nota la diferencia con provincias mas pobres como Chaco o las provincias de la Mesopotamia. 
+
+La **mediana nacional** se ubica en torno a `r med_nac_lab` pesos, con gran dispersión entre jurisdicciones.
+
+Este tipo de representación permite una visualización rápida de las diferencias territoriales del mercado laboral argentino y permite identificar zonas de desarrollo o rezago económico.
+
+## Ejercicio 2. Top 5 sectores con salarios más bajos
+
+Para hacer el analisis de los sectores de la economía con los salarios más bajos tomamos nuevamente la mediana del salario en vez del promedio, esta vez el dataset total_clae2, para ver los salarios de todos los trabajadores (tanto privados como publicos).
+
+
+Con el selector podremos elegir de que provincia queremos analizar los sectores, ademas del promedio nacional. 
+
+```{r Ejercicio2_data, include=FALSE, warning=FALSE}
+
+total_clae2_ej2 <- total_clae2 %>%
+  tidyr::drop_na() %>%
+  dplyr::filter(fecha == as.Date("2023-11-01")) %>%
+  dplyr::left_join(dict_provincias, by = "id_provincia_indec") %>%
+  dplyr::mutate(
+    clae2 = as.factor(clae2),
+    prov  = nombre_provincia_indec
+  )
+
+promedios_sectores <- total_clae2_ej2 %>%
+  dplyr::group_by(prov, clae2) %>%
+  dplyr::summarise(w_promedio = mean(w_median, na.rm = TRUE), .groups = "drop")
+
+top5 <- promedios_sectores %>%
+  dplyr::group_by(prov) %>%
+  dplyr::arrange(w_promedio, .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup()
+
+top5_global <- total_clae2_ej2 %>%
+  dplyr::group_by(clae2) %>%
+  dplyr::summarise(w_promedio = mean(w_median, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::arrange(w_promedio) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::mutate(prov = "Promedio Nacional")
+
+top5 <- dplyr::bind_rows(top5, top5_global)
+
+dict_clae2 <- dict_clae2 %>%
+  dplyr::mutate(clae2 = as.factor(clae2))
+
+# unimos descripciones
+top5 <- dplyr::left_join(top5, dict_clae2, by = "clae2") %>%
+  dplyr::select(prov, w_promedio, clae2_desc, letra_desc)
+
+```
+
+```{r Plot_Ejercicio_2, echo=FALSE, warning=FALSE}
+wellPanel(
+  selectInput(
+    inputId  = "prov_selector_ej2", 
+    label    = "Seleccione una Provincia o Promedio Nacional:",
+    choices  = sort(unique(top5$prov)),
+    selected = if ("Promedio Nacional" %in% top5$prov) "Promedio Nacional" else sort(unique(top5$prov))[1],
+    width    = "100%"
+  )
+)
+
+plotlyOutput("lollipop_ej2", height = "600px")
+
+# 3. Server: Lógica Reactiva
+output$lollipop_ej2 <- plotly::renderPlotly({
+  req(input$prov_selector_ej2)
+
+  # Filtrado y etiquetas envueltas
+  data_filtrada <- top5 %>%
+    dplyr::filter(prov == input$prov_selector_ej2) %>%
+    dplyr::mutate(clae2_desc_wrapped = stringr::str_wrap(clae2_desc, width = 30))
+
+  # Orden Y (menores arriba)
+  y_levels <- data_filtrada %>%
+    dplyr::arrange(w_promedio) %>%
+    dplyr::pull(clae2_desc_wrapped)
+
+  # Rango X
+  rango_maximo_x <- max(data_filtrada$w_promedio, na.rm = TRUE) * 1.10
+
+  # Paleta viridis para discreto
+  pal <- viridisLite::viridis(length(unique(data_filtrada$letra_desc)))
+
+  p <- plot_ly(
+    data = data_filtrada,
+    x    = ~w_promedio,
+    y    = ~clae2_desc_wrapped,
+    type = "scatter",
+    mode = "markers",
+    color = ~letra_desc,
+    colors = pal,
+    hoverinfo = "text",
+    text = ~paste0(
+      "<b>Sector:</b> ", clae2_desc,
+      "<br><b>Grupo:</b> ", letra_desc,
+      "<br><b>Mediana salarial:</b> ", formatC(w_promedio, big.mark = ".", decimal.mark = ",", format = "f", digits = 0), " ARS"
+    )
+  ) %>%
+    add_segments(
+      x = 0, xend = ~w_promedio,
+      y = ~clae2_desc_wrapped, yend = ~clae2_desc_wrapped,
+      color = I("#cccccc"), showlegend = FALSE
+    ) %>%
+    add_markers(size = 12, showlegend = FALSE) %>%
+    layout(
+      title = list(
+        text = paste("Top 5 sectores con salarios más bajos en:", input$prov_selector_ej2),
+        x = 0.02, xanchor = "left"
+      ),
+      xaxis = list(
+        title = "Mediana salarial (ARS)",
+        range = c(0, rango_maximo_x),
+        tickformat = ",.0f",
+        zeroline = TRUE
+      ),
+      yaxis = list(
+        title = "Sector de actividad",
+        categoryorder = "array",
+        categoryarray = y_levels
+      ),
+      legend = list(
+        title = list(text = "<b>Grupo sectorial</b>"),
+        orientation = "h",
+        xanchor = "center",
+        x = 0.5, y = -0.25,
+        font = list(size = 11)
+      ),
+      margin = list(l = 160, r = 40, t = 60, b = 90),
+      annotations = list(
+        list(
+          text = "Fuente: Datos Abiertos del Gobierno Nacional · Noviembre 2023",
+          xref = "paper", yref = "paper",
+          x = 0, y = -0.21, xanchor = "left",
+          showarrow = FALSE,
+          font = list(size = 11, color = "gray40")
+        )
+      )
+    )
+
+  p
+})
+```
+
+Observamos que en la mayoría de provincias el menor promedio lo tiene el sector de mensajería. Por la importante diferencia, es posible que se deba a un problema en la forma de tomar los datos. 
+
+En general en todas las provincias los sectores con menores salarios son aquellos que brindan servicios, como actividades deportivas, expendio de alimentos, servicios artísticos, etc. Se observa como en las provincias mas pobres los los valores se posisionan alrededor de las 150k, mientras que en las más ricas se mantienen cercanos a los 200k.
+
+## Ejercicio 3: Evolución del salario por sectores frente al promedio nacional 
+
+En esta visualización calculamos el promedio nacional de todos los sectores para poder comparar con los sectores que queramos. En la lista desplegable seleccionamos y sumamos al sector a la visualización (es un poco incómodo, pero para sacar un sector hay que borrarlo con el teclado).
+
+El objetivo es analizar cómo varía la mediana salarial a lo largo del tiempo de los distintos sectores económicos de la Argentina, tomando como referencia la media nacional.
+
+Período: enero 2014 – noviembre 2023
+
+```{r Ejercicio 3, include=FALSE, warning=FALSE}
+
+promedios_nacionales <- total %>%
+  group_by(fecha) %>%
+  summarise(w_median = median(w_median))
+
+dict_letras <- dict_clae2 %>%
+  select(letra, letra_desc) %>%
+  distinct(letra, letra_desc)
+
+promedios_sectores_historico <- total_clae2 %>%
+  mutate(clae2 = as.factor(clae2))%>%
+  left_join(y = dict_clae2, by = "clae2") %>%
+  group_by(fecha, letra) %>%
+  summarise(w_median = median(w_median)) %>%
+  mutate(letra = as.factor(letra)) %>%
+  left_join(y = dict_letras, by = "letra")%>%
+  select(fecha, w_median, letra_desc, letra)
+
+promedios_sectores_historico <- left_join(promedios_sectores_historico, promedios_nacionales, by = "fecha")
+
+promedios_sectores_historico <- promedios_sectores_historico %>%
+  mutate(w_ratio = round(w_median.x/w_median.y , digits = 2))
+
+```
+
+```{r Plot_Ejercicio_3, echo=FALSE, warning=FALSE}
+# 1. Selector de Sector (Permite Selección Múltiple)
+# Usamos selectizeInput para un desplegable compacto.
+
+wellPanel(
+
+selectizeInput(
+  inputId = "selector_sector",
+  label = "Selecciona uno o más sectores (Letra):",
+  choices = sort(unique(promedios_sectores_historico$letra_desc)),
+  selected = c(
+    " AGRICULTURA, GANADERÍA, CAZA, SILVICULTURA Y PESCA",
+    " ENSEÑANZA",
+    " INDUSTRIA MANUFACTURERA",
+    " SERVICIOS PROFESIONALES, CIENTÍFICOS Y TÉCNICOS",
+    " INTERMEDIACIÓN FINANCIERA Y SERVICIOS DE SEGUROS"
+  ),
+  multiple = TRUE # Habilita la selección múltiple
+),
+
+# 2. Gráfico Reactivo de Series de Tiempo
+plotly::renderPlotly({
+
+  # 1. Validación: Si no hay sectores seleccionados, muestra un mensaje
+  if (is.null(input$selector_sector)) {
+    return(
+      plot_ly() %>%
+        layout(title = "Por favor, selecciona al menos un sector.")
+    )
+  }
+
+  # 1. Filtrado Reactivo
+  datos_filtrados_st <- promedios_sectores_historico %>%
+    ungroup() %>%
+    filter(letra_desc %in% input$selector_sector) %>%
+    mutate(fecha = as.Date(fecha, format = "%Y-%m-%d"))
+
+  # 2. Creación del Plotly 
+  p <- plot_ly(
+    data = datos_filtrados_st,
+    x = ~fecha,
+    y = ~w_ratio,
+    # Agrupa por sector (letra_desc) y define el color
+    color = ~letra_desc,
+    colors = 'viridis',
+    type = 'scatter',
+    mode = 'lines+markers',
+
+    # Tooltip
+    text = ~paste(
+      "Sector:", letra_desc,
+      "<br>Fecha:", format(fecha, "%Y-%m"),
+      "<br>Ratio (Salario vs País):", round(w_ratio, 2)
+    ),
+    hoverinfo = "text"
+  ) %>%
+
+    # Ajustes de Layout
+    layout(
+  title = list(
+    text = paste0(
+      "<b>Evolución Salarial (Ratio Sector/Nacional)</b>",
+      "<br><sub>Fuente: Datos Abiertos del Gobierno Nacional · Serie histórica 2014–2024</sub>"
+    ),
+    x = 0.1,
+    xanchor = "left"
+  ),
+  xaxis = list(
+    title = "Fecha",
+    tickformat = "%Y/%m"
+  ),
+  yaxis = list(
+    title = "Ratio Salario Sector / Salario Nacional"
+  ),
+  shapes = list(
+    list(
+      type = 'line',
+      y0 = 1, y1 = 1, x0 = 0, x1 = 1,
+      xref = 'paper', yref = 'y',
+      line = list(color = 'red', dash = 'dot', width = 1.5)
+    )
+  ),
+  legend = list(
+    orientation = 'h',
+    xanchor = "center",
+    x = 0.5,
+    y = -0.25
+  ),
+  margin = list(l = 80, r = 40, t = 80, b = 80)
+)
+
+
+  p
+})
+) 
+```
+
+Lo bueno de esta visualización es que podemos analizar las variaciones de salarios del sector que elijamos y compararlo con el que queramos. Notamos que hay sectores que siempre se mantienen por encima de la media, en general las relacionadas con energía o minería, mientras que otros siempre se mantienen por debajo, como mensajería, enseñanza o sectores relacionados a la salud. 
+
+
+> **Fuente:** Elaboración propia con base en datos abiertos del Ministerio de Desarrollo Productivo, INDEC y datos geoespaciales del gobierno nacional.

@@ -1,0 +1,531 @@
+---
+title: "Integrador 1"
+author: 
+  - Licenciatura en Ciencias de Datos - UNSAM
+  - Visualización de datos en R
+  - Octubre 2025
+  - Marcelo Ulrich
+  - Lautaro Terreno
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+runtime: shiny
+---
+
+
+<!-- **Ponemos la consigna acá?** digo para arrancarlo---------------------------------------------- 
+Identificar:
+1. Los departamentos con mayores salarios, expresados en un mapa coroplético.
+
+2. Los 5 sectores de actividad con salarios más bajos, expresados en un gráfico de barras.
+
+3. Estime el salario promedio del total del país a lo largo de los años disponibles en la base.
+Luego, elija 4 sectores de actividad (los cuales se distinguen por la letra) o grupos de sectores y visualice la evolución de sus salarios expresados en relación al promedio nacional.
+
+Por ejemplo, si para un año X, el salario promedio nacional es 100 y el de la rama petrolera es 150, el dato para la última rama debe expresarse como 1,5
+
+Utilicen su código para implementar varias de las técnicas vistas en clase, elegidas según su criterio. Por ejemplo, visualizar: 1) cantidades, proporciones y distribuciones; 2) patrones espaciales y temporales; 3) información geográfica en mapas; 4) vía gráficos estáticos e interactivos.
+Comentarios-->
+
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(dplyr)
+library(plotly)
+library(scales)
+library(tidyverse)
+library(viridis)
+library(crosstalk)
+library(stringr)
+
+# Esto seria ideal, hacer la conversión dentro del rmd. para que sea mas rápido y ande bien el html, 
+# directamente cargamos los CSV ya con este procesamiento en otro archivo R.
+
+#knitr::opts_chunk$set(echo = TRUE)
+#source("funcion_imputar.R")
+#total_imputado <- imputar_por_vecinos(
+#  data = total,
+#  departamentos = departamentos,
+#  group_cols = NULL,
+#  sentinel = -99,
+#  agg_fun = median,
+#  strict_border = FALSE
+#)
+
+departamentos <- read_sf("data/integrador1/lauti.geojson") #cambiar nombre del geojson xd
+departamentos$codigo_departamento_indec <- as.numeric(departamentos$codigo_departamento_indec)
+malvinas <- departamentos %>%
+  filter(codigo_departamento_indec == 94021)
+departamentos <- departamentos %>%
+  filter(codigo_departamento_indec != 94021)
+
+```
+
+
+```{r data, include=FALSE}
+
+total_clae2 <- read.csv("data/integrador1/total_clae2imputado.csv") # imputado
+#total_clae2_base <- read.csv("data/integrador1/total_clae2.csv")
+priv <- read.csv("data/integrador1/priv_imputado.csv") # imputado
+# pub <- read.csv("data/integrador1/pub.csv") 
+# tot_emp <- read.csv("data/integrador1/tot_emp.csv")
+total <- read.csv("data/integrador1/total_imputado.csv") # imputado
+# priv_letra <- read.csv("data/integrador1/priv_letra.csv")
+# priv_clae2 <- read.csv("data/integrador1/priv_clae2.csv")
+# tot_emp_letra <- read.csv("data/integrador1/tot_emp_letra.csv")
+total_letra <- read.csv("data/integrador1/total_letra_imputado.csv") # imputado
+# tot_emp_clae2 <- read.csv("data/integrador1/tot_emp_clae2.csv")
+
+dict_clae2 <- read.csv("data/integrador1/dic_clae2.csv")
+dict_dptos <- read.csv("data/integrador1/dic_cod_depto.csv")
+
+
+```
+
+
+```{r}
+dict_provincias <- dict_dptos %>%
+  select(id_provincia_indec, nombre_provincia_indec) %>%
+  distinct(id_provincia_indec, nombre_provincia_indec)
+```
+
+
+# NOTAS METODOLOGICAS
+0. Usamos mediana en vez de medias/promedio. Es más representativo que el promedio.
+
+1. Encontramos que en todos los datasets* [chequear], hay departamentos que no aparecen. Es decir, departamentos presentes en el geojson de los cuales no existen datos sobre los salarios. Son los siguientes: 42042, 22161, 26049, 42084, 42091 y 66077. Para solucionar esto, decidimos asignarles el promedio de los departamentos adyacentes.
+
+1.1 También observamos que varios valores son -99. Investigamos sobre la forma en que se generó el dataset y encontramos que es una cuestión de diseño: en departamentos donde hay pocas personas que trabajen en determinado sector, se coloca -99 para mantener el secreto estadístico. Para evitar esta anomalía, también les asignamos el promedio de los departamentos adyacentes.
+
+1.2 Nos topamos con otra pared: ¿y si los departamentos adyacentes tampoco tienen valores? Para resolverlo, si no es posible imputarlo por vecinos, toma el promedio de la provincia (según clae2 y mes, obvio). Si tampoco es posible, toma el promedio nacional. 
+
+Todas estas transformaciones están en el script "funcion_imputar.R"
+
+2. El geojson provisto no contiene a Tierra del Fuego (ni las islas ni antartida). Por lo tanto, decidimos buscar un geojson que la incluya !!!!(IGN, poner link o algo)!!!!!. Sin embargo, al graficarlo todo vimos que se hacía ilegible (la Antartida ocupaba mucho espacio, haciendo que el analisis por departamentos no se pueda apreciar. Además, no tiene sentido economico incluirla, ya que allí no hay rubros de interes para este analisis. Por lo tanto, decidimos dejar fuera del analisis a la Antartida y al resto de islas del Altantico Sur (excepto las Malvinas, para visibilizar el reclamo de soberanía nacional).
+
+2.1 Los datos, tampoco contienen todos los departamentos de TdF. En particular, hay 2 departamentos que tienen el codigo distinto entre el diccionario provisto por la pagina y el geojson de IGN (Ushuaia y Río Grande). Los modificamos a mano en el geojson.
+
+2.2 El tercer departamento de TdF, Tolhuin, figura en el diccionario provisto en conujunto con Río Grande, es decir, los datos que dicen ser de Río Grande en realidad son de ambos. Por lo que modificamos su codigo en el geojson para pintar a ambos de la misma manera.
+
+2.3 El unico departamento de TdF que queda sin datos es, obvio, Malvinas. Por lo que, para generar impacto en los gráficos, decidimos pintarlas con los colores patrios.
+
+3. En los datos de salarios, hay NAs en depto y prov, por lo que al no poder indentificarlos, son eliminados.
+
+
+# Tareas a realizar:
+
+Notas para todas:
+1. Para todos, usar selector así elegir datos privados, publicos, empresas y total.
+En caso de complicarse, presentar por separado
+
+Consigna 1: Ya tenemos el grafico de "ultima foto".
+IDEA: Hacerlo animado, agregando slider de fecha, para poder aprovechar todos los datos.
+Problemas:
+
+1. Hay que normalizar en relacion al dolar (oficial). Porque, por la inflación, las diferencias entre 2014 y 2023 van a ser muy grandes y no van a tener un sentido real.
+
+IDEA2: Hover para ver departamentos, provincia y valores
+
+
+
+Consigna 2: Todo falta
+En vez de barras (iu) ponerlo como lollipop (paletas, pirulines)
+IDEAS: Animación, carrera de barras (ver compatibilidad con selector)
+
+UPDATE: Yo diria de asignarles el promedio (mejor mediana) de los deptos aledaños (lio, mejor mediana provincial y sectorial).
+
+Para hacer la animación podemos usar plotly (según gemini tiene opcion de manejo manual y auto-slider). Tenemos que pensar como generar la estructura de los datos...
+
+Consigna 3: Todo
+Grafico simple de lineas
+IDEAS: ver de hacerlo animado (asi crece las lineas)
+
+
+
+
+
+
+<!-- # Ejercicio 1: Media de salario por pais -->
+
+
+<!-- En esta visualizacion observamos BLABLABLALBA -->
+
+<!-- ```{r Ejercicio 1, echo=FALSE} -->
+<!-- total_geo <- left_join(x = total,y = departamentos, by = "codigo_departamento_indec") -->
+<!-- total_geo <- left_join(x = total_geo,y = dict_dptos, by = "codigo_departamento_indec") -->
+<!-- total_geo <- total_geo %>% -->
+<!--   select(fecha, departamen, provincia, w_median, geometry) %>% -->
+<!--   filter(fecha == "2023-11-01") -->
+<!-- total_geo <- drop_na(total_geo) -->
+
+<!-- # asegurar sf -->
+<!-- total_geo_sf <- st_as_sf(total_geo, sf_column_name = "geometry") -->
+<!-- malvinas_sf  <- st_as_sf(malvinas, sf_column_name = "geometry") -->
+<!-- med_nac  <- median(total_geo_sf$w_median, na.rm = TRUE) -->
+<!-- med_nac_lab <- label_comma(big.mark = ".", decimal.mark = ",", accuracy = 1)(med_nac) -->
+<!-- titulo    <- "Mediana salarial por departamento — Argentina" -->
+<!-- subtitulo <- paste0("Última foto: Noviembre 2023 · Mediana nacional: ", med_nac_lab, " ARS") -->
+
+<!-- p <- ggplot() + -->
+<!--   geom_sf( -->
+<!--     data = total_geo_sf, -->
+<!--     aes( -->
+<!--       geometry = geometry, -->
+<!--       fill = w_median, -->
+<!--       text = paste0( -->
+<!--         "<b>Provincia:</b> ", provincia, -->
+<!--         "<br><b>Departamento:</b> ", departamen, -->
+<!--         "<br><b>Mediana:</b> ", formatC(w_median, big.mark = ".", decimal.mark = ",", format = "f", digits = 0) -->
+<!--       ) -->
+<!--     ), -->
+<!--     color = NA -->
+<!--   ) + -->
+<!--   labs(title = titulo, subtitle = subtitulo) + -->
+<!--   geom_sf(data = malvinas_sf, fill = "#75aadb", color = NA) + -->
+<!--   scale_fill_viridis_c( -->
+<!--     option = "magma", -->
+<!--     labels = label_comma(big.mark = ".", decimal.mark = ","), -->
+<!--     name = "Mediana del salario (ARS)" -->
+<!--   ) + -->
+<!--   theme_void() -->
+
+<!-- g <- ggplotly(p, tooltip = "text") -->
+
+<!-- # 1) quitar bordes negros que agrega plotly -->
+<!-- for (i in seq_along(g$x$data)) { -->
+<!--   if (!is.null(g$x$data[[i]]$line)) g$x$data[[i]]$line$width <- 0 -->
+<!-- } -->
+
+<!-- # 2) formateo del colorbar (ticks con separador de miles) -->
+<!-- #    (aplicamos al primer rastro que tiene colorbar) -->
+<!-- idx_cb <- which(vapply(g$x$data, function(tr) isTRUE(tr$showscale), logical(1)))[1] -->
+<!-- if (length(idx_cb) == 1 && !is.na(idx_cb)) { -->
+<!--   g$x$data[[idx_cb]]$colorbar <- list( -->
+<!--     title = list(text = "Mediana (ARS)"), -->
+<!--     tickformat = ",.0f"  -->
+<!--   ) -->
+<!-- } -->
+
+<!-- # 3) título/subtítulo (plotly lo respeta pero lo reforzamos) -->
+<!-- g <- g %>% -->
+<!--   layout( -->
+<!--     title = list( -->
+<!--       text = paste0( -->
+<!--         "<b>", titulo, "</b>", -->
+<!--         "<br><sub>", subtitulo, "</sub>" -->
+<!--       ), -->
+<!--       x = 0, xanchor = "left" -->
+<!--     ), -->
+<!--     margin = list(t = 70, r = 10, b = 10, l = 10) -->
+<!--   ) -->
+
+<!-- g -->
+<!-- ``` -->
+
+
+# Ejercicio 2. Top 5 sectores con salarios más bajos
+
+Para hacer el analisis de los sectores de la economía con los salarios más bajos tomamos nuevamente la mediana del salario en vez del promedio.
+
+En principio tomamos el dataset total_clae2, para ver los salarios de todos los trabajadores (tanto privados como publicos).
+
+
+<!-- Objetivo: lollipop que permita seleccionar por provincia (un mismo año o solo ultima fecha?) -->
+
+<!-- Primero ultima fecha, vemos de hacer slider... -->
+
+
+MODIFICAR IMPUTADOR!! Faltan los CLAE2!!!
+
+
+
+```{r Ejercicio 2, echo=FALSE}
+total_clae2<- total_clae2 %>%
+  drop_na() %>%
+  filter(fecha == "2023-11-01") %>%
+  left_join(dict_provincias, by = "id_provincia_indec") %>%
+  mutate(clae2 = as.factor(clae2),
+         prov = nombre_provincia_indec)
+  
+promedios_sectores <-  total_clae2 %>%
+  group_by(prov, clae2)%>%
+  summarise(w_promedio = mean(w_median, na.rm = TRUE) )
+
+# Me quedo con los peores 5
+
+top5 <- promedios_sectores %>%
+  group_by(prov)%>%
+  arrange(w_promedio) %>%
+  slice_head(n = 5)
+
+top5_global <- total_clae2 %>%
+  group_by(clae2) %>%
+  summarise(w_promedio = mean(w_median, na.rm = TRUE))%>%
+  arrange(w_promedio)%>%
+  slice_head(n = 5) %>%
+  mutate(prov = "Promedio Nacional")
+
+top5 <- rbind(top5, top5_global)
+
+# Agrego nombres
+
+dict_clae2 <- dict_clae2%>%
+  mutate(clae2 = as.factor(clae2))
+top5 <- left_join(x = top5, y = dict_clae2, by = "clae2")
+top5 <- select(top5, prov, w_promedio, clae2_desc, letra_desc)
+```
+```{r}
+# ... (texto anterior del Rmd) ...
+
+wellPanel(
+  
+  # 1. UI: Selector de Provincia (Esto sí va aquí)
+  selectInput(
+    inputId = "prov_selector_ej2", 
+    label = "Seleccione una Provincia o Promedio Nacional:",
+    choices = sort(unique(top5$prov)),
+    selected = "Promedio Nacional",
+    width = "100%"
+  ),
+  
+  # 2. UI: El *contenedor* del gráfico
+  #    Definimos un ID ("lollipop_ej2") y una altura fija.
+  #    Plotly llenará esta altura.
+  plotly::plotlyOutput("lollipop_ej2", height = "600px")
+  
+) # Aquí se cierra el wellPanel
+
+```
+
+
+
+```{r ej2_server_logic, include=FALSE}
+
+# 3. Server: Lógica Reactiva
+output$lollipop_ej2 <- plotly::renderPlotly({
+
+  # A. Filtramos y transformamos los datos
+  data_filtrada <- top5 %>%
+    filter(prov == input$prov_selector_ej2) %>%
+    mutate(clae2_desc_wrapped = stringr::str_wrap(clae2_desc, width = 30)) 
+
+  # --- 1. AÑADIMOS EL CÁLCULO DEL RANGO ---
+  # Calculamos el valor máximo de los datos filtrados
+  max_val <- max(data_filtrada$w_promedio, na.rm = TRUE)
+  # Creamos un rango máximo con un 10% de espacio (padding)
+  rango_maximo_x <- max_val * 1.10
+
+  # B. Título dinámico
+  titulo_grafico <- paste("Top 5 Sectores con Salarios Más Bajos en:", 
+                          input$prov_selector_ej2)
+
+  # C. Creamos el gráfico base
+  p <- plot_ly(
+    data = data_filtrada,
+    x = ~w_promedio,    
+    y = ~clae2_desc_wrapped, 
+    color = ~letra_desc,   
+    colors = "viridis",      
+    type = 'scatter',      
+    mode = 'markers',
+    hoverinfo = "text",
+    text = ~paste(
+      "<b>Sector:</b>", clae2_desc, 
+      "<br><b>Grupo:</b>", letra_desc,
+      "<br><b>Mediana Salarial:</b>", 
+      formatC(w_promedio, big.mark = ".", decimal.mark = ",", format = "f", digits = 0), "ARS"
+    )
+  ) %>%
+  
+  # D. Añadimos los "palos" (segments)
+  add_segments(
+    x = 0,
+    xend = ~w_promedio,
+    y = ~clae2_desc_wrapped,
+    yend = ~clae2_desc_wrapped,
+    color = I("#cccccc"), 
+    showlegend = FALSE
+  ) %>%
+  
+  # E. Añadimos los "caramelos" (markers)
+  add_markers(
+    size = 25,
+    showlegend = FALSE
+  ) %>%
+  
+  # F. Configuramos el Layout
+  layout(
+    title = list(text = titulo_grafico, xanchor = "center"),
+    xaxis = list(
+      title = "Mediana Salarial (ARS)",
+      zeroline = TRUE,
+      tickfont = list(size = 15),
+      # --- 2. AÑADIMOS EL RANGO DINÁMICO AL EJE X ---
+      # El rango va desde 0 hasta el máximo + 10% que calculamos
+      range = c(0, rango_maximo_x) 
+      ),
+    yaxis = list(
+      title = "Sector de Actividad", 
+      categoryorder = "array",
+      categoryarray = ~w_promedio,
+      tickfont = list(size = 15)
+      ), 
+    legend = list(
+      title = list(text = "<b>Grupo Sectorial</b>"),
+      orientation = 'h',    
+      xanchor = "center",   
+      x = 0.5,              
+      y = -0.3,
+      font = list(size = 10)
+    ),
+    margin = list(
+      l = 150, 
+      t = 50, 
+      b = 100, 
+      r = 50 # Mantenemos el margen derecho de 50px
+      ) 
+  )
+  
+  # G. Devolvemos el gráfico plotly
+  p
+})
+```
+
+
+
+
+
+# Ejercicio 3
+
+La idea es tener por un lado el promedio (o mediana) total del pais. Luego, para 4 sectores, calcular la mediana del total del sector y eso comparalo contra el promedio nacional.
+
+```{r}
+
+promedios_nacionales <- total %>%
+  group_by(fecha) %>%
+  summarise(w_median = median(w_median))
+
+dict_letras <- dict_clae2 %>%
+  select(letra, letra_desc) %>%
+  distinct(letra, letra_desc)
+
+promedios_sectores_historico <- total_clae2 %>%
+  mutate(clae2 = as.factor(clae2))%>%
+  left_join(y = dict_clae2, by = "clae2") %>%
+  group_by(fecha, letra) %>%
+  summarise(w_median = median(w_median)) %>%
+  mutate(letra = as.factor(letra)) %>%
+  left_join(y = dict_letras, by = "letra")%>%
+  select(fecha, w_median, letra_desc, letra)
+
+promedios_sectores_historico <- left_join(promedios_sectores_historico, promedios_nacionales, by = "fecha")
+
+promedios_sectores_historico <- promedios_sectores_historico %>%
+  mutate(w_ratio = round(w_median.x/w_median.y , digits = 2))
+
+```
+
+
+```{r}
+# check
+
+test_letraNA <- total_clae2 %>%
+  mutate(clae2 = as.factor(clae2))%>%
+  left_join(y = dict_clae2, by = "clae2") %>%
+  filter(is.na(letra))
+
+#son las filas que no tienen CLAE2 por el imputador!
+```
+
+```{r}
+# NOTA: Asegúrate de que tu cabecera YAML contiene 'runtime: shiny'
+
+# 1. Selector de Sector (Permite Selección Múltiple)
+# Usamos selectizeInput para un desplegable compacto.
+
+wellPanel(
+
+selectizeInput(
+  inputId = "selector_sector",
+  label = "Selecciona uno o más sectores (Letra):",
+  choices = sort(unique(promedios_sectores_historico$letra_desc)),
+  # ¡IMPORTANTE! Corregido: Se eliminan espacios en blanco en los nombres de los sectores
+  selected = c(
+    " AGRICULTURA, GANADERÍA, CAZA, SILVICULTURA Y PESCA",
+    " ENSEÑANZA",
+    " INDUSTRIA MANUFACTURERA",
+    " SERVICIOS PROFESIONALES, CIENTÍFICOS Y TÉCNICOS",
+    " INTERMEDIACIÓN FINANCIERA Y SERVICIOS DE SEGUROS"
+  ),
+  multiple = TRUE # Habilita la selección múltiple
+),
+
+# 2. Gráfico Reactivo de Series de Tiempo
+plotly::renderPlotly({
+
+  # 1. Validación: Si no hay sectores seleccionados, muestra un mensaje
+  if (is.null(input$selector_sector)) {
+    return(
+      plot_ly() %>%
+        layout(title = "Por favor, selecciona al menos un sector.")
+    )
+  }
+
+  # 1. Filtrado Reactivo
+  datos_filtrados_st <- promedios_sectores_historico %>%
+    ungroup() %>%
+    filter(letra_desc %in% input$selector_sector) %>%
+    mutate(fecha = as.Date(fecha, format = "%Y-%m-%d"))
+
+  # 2. Creación del Plotly (Series de Tiempo)
+  p <- plot_ly(
+    data = datos_filtrados_st,
+    x = ~fecha,
+    y = ~w_ratio,
+    # Agrupa por sector (letra_desc) y define el color, lo que asegura que se dibujen las líneas
+    color = ~letra_desc,
+    type = 'scatter',
+    mode = 'lines+markers', # Cambia a 'lines+markers' si solo 'lines' no dibuja nada
+
+    # Tooltip
+    text = ~paste(
+      "Sector:", letra_desc,
+      "<br>Fecha:", format(fecha, "%Y-%m"),
+      "<br>Ratio (Salario vs País):", round(w_ratio, 2)
+    ),
+    hoverinfo = "text"
+  ) %>%
+
+    # Ajustes de Layout
+    layout(
+      title = "Evolución Salarial (Ratio Sector/Nacional)",
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y/%m"
+      ),
+      yaxis = list(
+        title = "Ratio Salario Sector / Salario Nacional"),
+        # Línea de referencia en 1.0 (el promedio nacional).
+        # La estructura es correcta, si no aparece, es un conflicto de rendering.
+        shapes = list(
+          type = 'lines',
+          y0 = 1, y1 = 1, x0 = 0, x1 = 1,
+          xref = 'paper', yref = 'y',
+          line = list(color = 'red', dash = 'dot', width = 1.5) # Aumentamos el ancho por si acaso
+        ),
+      legend = list(
+        orientation = 'h', xanchor = "center", x = 0.5, y = -0.2
+      )
+    )
+
+  # 3. Devolver el gráfico
+  p
+})
+) # Cierre del wellPanel
+```
+
+
